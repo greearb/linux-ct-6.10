@@ -97,6 +97,8 @@ static int mt7996_start(struct ieee80211_hw *hw)
 	struct mt7996_dev *dev = mt7996_hw_dev(hw);
 	int ret;
 
+	dev->mt76.debug_lvl = debug_lvl;
+
 	flush_work(&dev->init_work);
 
 	mutex_lock(&dev->mt76.mutex);
@@ -783,6 +785,9 @@ static void mt7996_tx(struct ieee80211_hw *hw,
 		mvif = (struct mt7996_vif *)vif->drv_priv;
 		wcid = &mvif->sta.wcid;
 	}
+
+	mtk_dbg(&dev->mt76, TXV, "mt7996-tx, wcid: %d\n",
+		wcid->idx);
 
 	mt76_tx(mphy, control->sta, wcid, skb);
 }
