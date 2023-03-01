@@ -3037,8 +3037,12 @@ static int mt7996_load_ram(struct mt7996_dev *dev)
 {
 	int ret;
 
-	ret = __mt7996_load_ram(dev, "WM", fw_name(dev, FIRMWARE_WM),
-				MT7996_RAM_TYPE_WM);
+	if (dev->testmode_enable)
+		ret = __mt7996_load_ram(dev, "WM_TM", fw_name(dev, FIRMWARE_WM_TM),
+					MT7996_RAM_TYPE_WM_TM);
+	else
+		ret = __mt7996_load_ram(dev, "WM", fw_name(dev, FIRMWARE_WM),
+					MT7996_RAM_TYPE_WM);
 	if (ret)
 		return ret;
 
@@ -3713,17 +3717,9 @@ int mt7996_mcu_set_eeprom(struct mt7996_dev *dev)
 	return 0;
 }
 
-int mt7996_mcu_get_eeprom(struct mt7996_dev *dev, u32 offset)
+int mt7996_mcu_get_eeprom(struct mt7996_dev *dev, u32 offset, u8 *read_buf)
 {
-	struct {
-		u8 _rsv[4];
-
-		__le16 tag;
-		__le16 len;
-		__le32 addr;
-		__le32 valid;
-		u8 data[16];
-	} __packed req = {
+	struct mt7996_mcu_eeprom_info req = {
 		.tag = cpu_to_le16(UNI_EFUSE_ACCESS),
 		.len = cpu_to_le16(sizeof(req) - 4),
 		.addr = cpu_to_le32(round_down(offset,
@@ -3732,6 +3728,7 @@ int mt7996_mcu_get_eeprom(struct mt7996_dev *dev, u32 offset)
 	struct sk_buff *skb;
 	bool valid;
 	int ret;
+	u8 *buf = read_buf;
 
 	ret = mt76_mcu_send_and_get_msg(&dev->mt76,
 					MCU_WM_UNI_CMD_QUERY(EFUSE_CTRL),
@@ -3742,7 +3739,9 @@ int mt7996_mcu_get_eeprom(struct mt7996_dev *dev, u32 offset)
 	valid = le32_to_cpu(*(__le32 *)(skb->data + 16));
 	if (valid) {
 		u32 addr = le32_to_cpu(*(__le32 *)(skb->data + 12));
-		u8 *buf = (u8 *)dev->mt76.eeprom.data + addr;
+
+		if (!buf)
+			buf = (u8 *)dev->mt76.eeprom.data + addr;
 
 		skb_pull(skb, 48);
 		memcpy(buf, skb->data, MT7996_EEPROM_BLOCK_SIZE);
