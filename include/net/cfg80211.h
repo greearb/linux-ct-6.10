@@ -3089,6 +3089,7 @@ struct cfg80211_assoc_link {
  * @ASSOC_REQ_DISABLE_TWT:  Disable TWT
  * @ASSOC_REQ_DISABLE_160:  Disable 160Mhz
  * @ASSOC_REQ_DISABLE_OFDMA:  Disable OFDMA
+ * @ASSOC_REQ_DISABLE_320:  Disable 320Mhz
  */
 enum cfg80211_assoc_req_flags {
 	ASSOC_REQ_DISABLE_HT			= BIT(0),
@@ -3102,6 +3103,7 @@ enum cfg80211_assoc_req_flags {
 	ASSOC_REQ_DISABLE_TWT                   = BIT(8),
 	ASSOC_REQ_DISABLE_160			= BIT(9),
 	ASSOC_REQ_DISABLE_OFDMA			= BIT(10),
+	ASSOC_REQ_DISABLE_320			= BIT(11),
 };
 
 /**
