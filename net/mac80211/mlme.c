@@ -3328,7 +3328,7 @@ static void ieee80211_set_disassoc(struct ieee80211_sub_if_data *sdata,
 	wiphy_work_cancel(sdata->local->hw.wiphy,
 			  &ifmgd->teardown_ttlm_work);
 
-	ieee80211_vif_set_links(sdata, 0, 0);
+	ieee80211_vif_set_links(sdata, 0, 0, true);
 
 	ifmgd->mcast_seq_last = IEEE80211_SN_MODULO;
 }
@@ -3493,7 +3493,8 @@ static void ieee80211_mgd_probe_ap(struct ieee80211_sub_if_data *sdata,
 
 	lockdep_assert_wiphy(sdata->local->hw.wiphy);
 
-	if (WARN_ON_ONCE(ieee80211_vif_is_mld(&sdata->vif)))
+	if (WARN_ONCE(ieee80211_vif_is_mld(&sdata->vif),
+		      "mgd-probe-ap called for MLD station: %s", sdata->dev->name))
 		return;
 
 	if (!ieee80211_sdata_running(sdata))
@@ -3783,7 +3784,7 @@ static void ieee80211_destroy_auth_data(struct ieee80211_sub_if_data *sdata,
 		sdata->u.mgd.flags = 0;
 
 		ieee80211_link_release_channel(&sdata->deflink);
-		ieee80211_vif_set_links(sdata, 0, 0);
+		ieee80211_vif_set_links(sdata, 0, 0, true);
 	}
 
 	cfg80211_put_bss(sdata->local->hw.wiphy, auth_data->bss);
@@ -3839,7 +3840,7 @@ static void ieee80211_destroy_assoc_data(struct ieee80211_sub_if_data *sdata,
 		}
 
 		ieee80211_link_release_channel(&sdata->deflink);
-		ieee80211_vif_set_links(sdata, 0, 0);
+		ieee80211_vif_set_links(sdata, 0, 0, true);
 	}
 
 	kfree(assoc_data);
@@ -5223,7 +5224,7 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 			}
 		}
 
-		ieee80211_vif_set_links(sdata, valid_links, dormant_links);
+		ieee80211_vif_set_links(sdata, valid_links, dormant_links, false);
 	}
 
 	for (link_id = 0; link_id < IEEE80211_MLD_MAX_NUM_LINKS; link_id++) {
@@ -5305,7 +5306,7 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 	}
 
 	/* links might have changed due to rejected ones, set them again */
-	ieee80211_vif_set_links(sdata, valid_links, dormant_links);
+	ieee80211_vif_set_links(sdata, valid_links, dormant_links, false);
 
 	rate_control_rate_init(sta);
 
@@ -5830,7 +5831,7 @@ static void ieee80211_ml_reconf_work(struct wiphy *wiphy,
 	new_dormant_links = sdata->vif.dormant_links & ~sdata->u.mgd.removed_links;
 
 	ret = ieee80211_vif_set_links(sdata, new_valid_links,
-				      new_dormant_links);
+				      new_dormant_links, false);
 	if (ret)
 		sdata_info(sdata, "Failed setting valid links\n");
 
@@ -5971,7 +5972,7 @@ static int ieee80211_ttlm_set_links(struct ieee80211_sub_if_data *sdata,
 	}
 
 	ret = ieee80211_vif_set_links(sdata, sdata->vif.valid_links,
-				      dormant_links);
+				      dormant_links, false);
 	if (ret) {
 		sdata_info(sdata, "Failed to set TTLM dormant links\n");
 		goto out;
@@ -6003,7 +6004,7 @@ static void ieee80211_tid_to_link_map_work(struct wiphy *wiphy,
 	new_dormant_links = ~sdata->u.mgd.ttlm_info.map &
 			    sdata->vif.valid_links;
 
-	ieee80211_vif_set_links(sdata, sdata->vif.valid_links, 0);
+	ieee80211_vif_set_links(sdata, sdata->vif.valid_links, 0, false);
 	if (ieee80211_ttlm_set_links(sdata, new_active_links, new_dormant_links,
 				     0))
 		return;
@@ -6124,7 +6125,7 @@ static void ieee80211_process_adv_ttlm(struct ieee80211_sub_if_data *sdata,
 			 */
 			ret = ieee80211_vif_set_links(sdata,
 						      sdata->vif.valid_links,
-						      0);
+						      0, false);
 			if (ret) {
 				sdata_info(sdata, "Failed setting valid/dormant links\n");
 				return;
@@ -6889,7 +6890,7 @@ static void ieee80211_teardown_ttlm_work(struct wiphy *wiphy,
 		sdata->vif.dormant_links & ~sdata->vif.suspended_links;
 	sdata->vif.suspended_links = 0;
 	ieee80211_vif_set_links(sdata, sdata->vif.valid_links,
-				new_dormant_links);
+				new_dormant_links, false);
 	ieee80211_vif_cfg_change_notify(sdata, BSS_CHANGED_MLD_TTLM |
 					       BSS_CHANGED_MLD_VALID_LINKS);
 }
@@ -7626,12 +7627,12 @@ static int ieee80211_prep_connection(struct ieee80211_sub_if_data *sdata,
 		mlo = true;
 		if (WARN_ON(!ap_mld_addr))
 			return -EINVAL;
-		err = ieee80211_vif_set_links(sdata, BIT(link_id), 0);
+		err = ieee80211_vif_set_links(sdata, BIT(link_id), 0, false);
 	} else {
 		if (WARN_ON(ap_mld_addr))
 			return -EINVAL;
 		ap_mld_addr = cbss->bssid;
-		err = ieee80211_vif_set_links(sdata, 0, 0);
+		err = ieee80211_vif_set_links(sdata, 0, 0, false);
 		link_id = 0;
 		mlo = false;
 	}
@@ -7793,7 +7794,7 @@ static int ieee80211_prep_connection(struct ieee80211_sub_if_data *sdata,
 out_release_chan:
 	ieee80211_link_release_channel(link);
 out_err:
-	ieee80211_vif_set_links(sdata, 0, 0);
+	ieee80211_vif_set_links(sdata, 0, 0, true);
 	return err;
 }
 
@@ -8554,7 +8555,7 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 
 	if (req->ap_mld_addr) {
 		/* if there was no authentication, set up the link */
-		err = ieee80211_vif_set_links(sdata, BIT(assoc_link_id), 0);
+		err = ieee80211_vif_set_links(sdata, BIT(assoc_link_id), 0, false);
 		if (err)
 			goto err_clear;
 	}
