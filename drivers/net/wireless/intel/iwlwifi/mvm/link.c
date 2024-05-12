@@ -983,6 +983,9 @@ void iwl_mvm_exit_esr(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 	lockdep_assert_held(&mvm->mutex);
 
+	if (!IWL_MVM_AUTO_EML_ENABLE)
+		return;
+
 	/* Nothing to do */
 	if (!mvmvif->esr_active)
 		return;
@@ -1029,6 +1032,9 @@ void iwl_mvm_block_esr(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
 	lockdep_assert_held(&mvm->mutex);
+
+	if (!IWL_MVM_AUTO_EML_ENABLE)
+		return;
 
 	/* This should be called only with disable reasons */
 	if (WARN_ON(!(reason & IWL_MVM_BLOCK_ESR_REASONS)))
@@ -1124,6 +1130,9 @@ void iwl_mvm_unblock_esr(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
 	lockdep_assert_held(&mvm->mutex);
+
+	if (!IWL_MVM_AUTO_EML_ENABLE)
+		return;
 
 	/* This should be called only with disable reasons */
 	if (WARN_ON(!(reason & IWL_MVM_BLOCK_ESR_REASONS)))
