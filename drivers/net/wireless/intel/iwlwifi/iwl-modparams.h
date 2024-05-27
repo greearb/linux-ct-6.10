@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022, 2024 Intel Corporation
  */
 #ifndef __iwl_modparams_h__
 #define __iwl_modparams_h__
@@ -8,6 +8,7 @@
 #include <linux/types.h>
 #include <linux/spinlock.h>
 #include <linux/gfp.h>
+#include <iwl-config.h>
 
 extern struct iwl_mod_params iwlwifi_mod_params;
 
@@ -104,6 +105,32 @@ static inline bool iwl_enable_tx_ampdu(void)
 
 	/* enabled by default */
 	return true;
+}
+
+/* Verify amsdu_size module parameter and convert it to a rxb size */
+static inline enum iwl_amsdu_size
+iwl_amsdu_size_to_rxb_size(int family)
+{
+	switch (iwlwifi_mod_params.amsdu_size) {
+	case IWL_AMSDU_2K:
+		/* ax200 blows up with this setting. */
+		if (family >= IWL_DEVICE_FAMILY_AX210)
+			return IWL_AMSDU_2K;
+		else
+			return IWL_AMSDU_4K;
+		break;
+	case IWL_AMSDU_8K:
+		return IWL_AMSDU_8K;
+	case IWL_AMSDU_12K:
+		return IWL_AMSDU_12K;
+	default:
+		pr_err("%s: Unsupported amsdu_size: %d\n", KBUILD_MODNAME,
+		       iwlwifi_mod_params.amsdu_size);
+		fallthrough;
+	case IWL_AMSDU_DEF:
+	case IWL_AMSDU_4K:
+		return IWL_AMSDU_4K;
+	}
 }
 
 #endif /* #__iwl_modparams_h__ */
