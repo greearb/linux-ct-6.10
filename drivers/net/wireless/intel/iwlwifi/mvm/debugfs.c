@@ -2639,6 +2639,9 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 			   mvm->debugfs_dir,
 			   &mvm->block_traffic);
 
+	debugfs_create_bool("rx_ts_ptp", 0600, mvm->debugfs_dir,
+			    &mvm->rx_ts_ptp);
+
 	/*
 	 * Create a symlink with mac80211. It will be removed when mac80211
 	 * exists (before the opmode exists which removes the target.)
