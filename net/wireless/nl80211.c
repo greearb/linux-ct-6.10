@@ -6350,23 +6350,29 @@ static int nl80211_set_beacon(struct sk_buff *skb, struct genl_info *info)
 
 	err = nl80211_parse_beacon(rdev, info->attrs, &params->beacon,
 				   info->extack);
-	if (err)
+	if (err) {
+		pr_info("set-beacon, parse-beacon failed; %d\n", err);
 		goto out;
+	}
 
 	attr = info->attrs[NL80211_ATTR_FILS_DISCOVERY];
 	if (attr) {
 		err = nl80211_parse_fils_discovery(rdev, attr,
 						   &params->fils_discovery);
-		if (err)
+		if (err) {
+			pr_info("set-beacon, parse-fils-discovery failed: %d\n", err);
 			goto out;
+		}
 	}
 
 	attr = info->attrs[NL80211_ATTR_UNSOL_BCAST_PROBE_RESP];
 	if (attr) {
 		err = nl80211_parse_unsol_bcast_probe_resp(rdev, attr,
 							   &params->unsol_bcast_probe_resp);
-		if (err)
+		if (err) {
+			pr_info("parse-beacond, parse_unsol_bcast_probe failed: %d\n", err);
 			goto out;
+		}
 	}
 
 	err = rdev_change_beacon(rdev, dev, params);
