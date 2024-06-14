@@ -90,6 +90,49 @@ static bool sr_scene_detect = true;
 module_param(sr_scene_detect, bool, 0644);
 MODULE_PARM_DESC(sr_scene_detect, "Enable firmware scene detection algorithm");
 
+
+static bool ok_eht(struct ieee80211_sta *sta)
+{
+	struct mt7996_sta *msta = (struct mt7996_sta *)sta->drv_priv;
+	struct ieee80211_vif *vif = container_of((void *)msta->vif,
+						 struct ieee80211_vif, drv_priv);
+	return sta->deflink.eht_cap.has_eht &&
+		(sta->deflink.conn_settings.mode >= IEEE80211_CONN_MODE_EHT ||
+		 vif->type != NL80211_IFTYPE_STATION);
+}
+
+static bool ok_he(struct ieee80211_sta *sta)
+{
+	struct mt7996_sta *msta = (struct mt7996_sta *)sta->drv_priv;
+	struct ieee80211_vif *vif = container_of((void *)msta->vif,
+						 struct ieee80211_vif, drv_priv);
+	return sta->deflink.he_cap.has_he &&
+		(sta->deflink.conn_settings.mode >= IEEE80211_CONN_MODE_HE ||
+		 vif->type != NL80211_IFTYPE_STATION);
+}
+
+static bool ok_vht(struct ieee80211_sta *sta)
+{
+	struct mt7996_sta *msta = (struct mt7996_sta *)sta->drv_priv;
+	struct ieee80211_vif *vif = container_of((void *)msta->vif,
+						 struct ieee80211_vif, drv_priv);
+	return sta->deflink.vht_cap.vht_supported &&
+		(sta->deflink.conn_settings.mode >= IEEE80211_CONN_MODE_VHT ||
+		 vif->type != NL80211_IFTYPE_STATION);
+}
+
+static bool ok_ht(struct ieee80211_sta *sta)
+{
+	struct mt7996_sta *msta = (struct mt7996_sta *)sta->drv_priv;
+	struct ieee80211_vif *vif = container_of((void *)msta->vif,
+						 struct ieee80211_vif, drv_priv);
+	pr_info("mt7996: ok-ht, vif->type: %d  IFTYPE_STA: %d\n",
+		vif->type, NL80211_IFTYPE_STATION);
+	return sta->deflink.ht_cap.ht_supported &&
+		(sta->deflink.conn_settings.mode >= IEEE80211_CONN_MODE_HT ||
+		 vif->type != NL80211_IFTYPE_STATION);
+}
+
 static u8
 mt7996_mcu_get_sta_nss(u16 mcs_map)
 {
@@ -1257,7 +1300,7 @@ mt7996_mcu_sta_he_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
 	struct tlv *tlv;
 	int i = 0;
 
-	if (!sta->deflink.he_cap.has_he)
+	if (!ok_he(sta))
 		return;
 
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_HE_V2, sizeof(*he));
@@ -1293,13 +1336,17 @@ mt7996_mcu_sta_he_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
 }
 
 static void
-mt7996_mcu_sta_he_6g_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
+mt7996_mcu_sta_he_6g_tlv(struct sk_buff *skb, struct ieee80211_sta *sta,
+			 struct mt7996_dev *dev)
 {
 	struct sta_rec_he_6g_capa *he_6g;
 	struct tlv *tlv;
 
-	if (!sta->deflink.he_6ghz_capa.capa)
+	if (sta->deflink.conn_settings.mode < IEEE80211_CONN_MODE_HE ||
+	    !sta->deflink.he_6ghz_capa.capa)
 		return;
+
+	dev_info(dev->mt76.dev, "sta-eht-tlv, marking 6ghz capable");
 
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_HE_6G, sizeof(*he_6g));
 
@@ -1308,7 +1355,8 @@ mt7996_mcu_sta_he_6g_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
 }
 
 static void
-mt7996_mcu_sta_eht_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
+mt7996_mcu_sta_eht_tlv(struct sk_buff *skb, struct ieee80211_sta *sta,
+		       struct mt7996_dev *dev)
 {
 	struct mt7996_sta *msta = (struct mt7996_sta *)sta->drv_priv;
 	struct ieee80211_vif *vif = container_of((void *)msta->vif,
@@ -1318,7 +1366,11 @@ mt7996_mcu_sta_eht_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
 	struct sta_rec_eht *eht;
 	struct tlv *tlv;
 
-	if (!sta->deflink.eht_cap.has_eht)
+	dev_info(dev->mt76.dev, "sta-eht-tlv, has-eht: %d  conn-settings mode: %d",
+		 sta->deflink.eht_cap.has_eht,
+		 sta->deflink.conn_settings.mode);
+
+	if (!ok_eht(sta))
 		return;
 
 	mcs_map = &sta->deflink.eht_cap.eht_mcs_nss_supp;
@@ -1349,12 +1401,17 @@ mt7996_mcu_sta_eht_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
 }
 
 static void
-mt7996_mcu_sta_ht_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
+mt7996_mcu_sta_ht_tlv(struct mt7996_dev *dev, struct sk_buff *skb, struct ieee80211_sta *sta)
 {
 	struct sta_rec_ht_uni *ht;
 	struct tlv *tlv;
 
-	if (!sta->deflink.ht_cap.ht_supported)
+	mtk_dbg(&dev->mt76, CFG,
+		"sta-ht-tlv, ok-ht: %d  ok_vht: %d  ok_he: %d ok_eht: %d deflink-mode: %d ht-supported: %d\n",
+		ok_ht(sta), ok_vht(sta), ok_he(sta), ok_eht(sta),
+		sta->deflink.conn_settings.mode, sta->deflink.ht_cap.ht_supported);
+
+	if (!ok_ht(sta))
 		return;
 
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_HT, sizeof(*ht));
@@ -1374,7 +1431,7 @@ mt7996_mcu_sta_vht_tlv(struct sk_buff *skb, struct ieee80211_sta *sta)
 	struct tlv *tlv;
 
 	/* For 6G band, this tlv is necessary to let hw work normally */
-	if (!sta->deflink.he_6ghz_capa.capa && !sta->deflink.vht_cap.vht_supported)
+	if (!sta->deflink.he_6ghz_capa.capa && !ok_vht(sta))
 		return;
 
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_VHT, sizeof(*vht));
@@ -1398,7 +1455,8 @@ mt7996_mcu_sta_amsdu_tlv(struct mt7996_dev *dev, struct sk_buff *skb,
 	    vif->type != NL80211_IFTYPE_AP)
 		return;
 
-	if (!sta->deflink.agg.max_amsdu_len)
+	if (sta->deflink.conn_settings.mode < IEEE80211_CONN_MODE_HT ||
+	    !sta->deflink.agg.max_amsdu_len)
 		return;
 
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_HW_AMSDU, sizeof(*amsdu));
@@ -1437,17 +1495,19 @@ mt7996_mcu_sta_muru_tlv(struct mt7996_dev *dev, struct sk_buff *skb,
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_MURU, sizeof(*muru));
 
 	muru = (struct sta_rec_muru *)tlv;
-	muru->cfg.mimo_dl_en = vif->bss_conf.eht_mu_beamformer ||
-			       vif->bss_conf.he_mu_beamformer ||
-			       vif->bss_conf.vht_mu_beamformer ||
-			       vif->bss_conf.vht_mu_beamformee;
-	muru->cfg.ofdma_dl_en = true;
+	if (ok_vht(sta) || ok_he(sta))
+		muru->cfg.mimo_dl_en = vif->bss_conf.eht_mu_beamformer ||
+			vif->bss_conf.he_mu_beamformer ||
+			vif->bss_conf.vht_mu_beamformer ||
+			vif->bss_conf.vht_mu_beamformee;
+	if (ok_he(sta))
+		muru->cfg.ofdma_dl_en = true;
 
-	if (sta->deflink.vht_cap.vht_supported)
+	if (ok_vht(sta))
 		muru->mimo_dl.vht_mu_bfee =
 			!!(sta->deflink.vht_cap.cap & IEEE80211_VHT_CAP_MU_BEAMFORMEE_CAPABLE);
 
-	if (!sta->deflink.he_cap.has_he)
+	if (!ok_he(sta))
 		return;
 
 	muru->mimo_dl.partial_bw_dl_mimo =
@@ -1490,7 +1550,7 @@ mt7996_is_ebf_supported(struct mt7996_phy *phy, struct ieee80211_vif *vif,
 	if (!bfee && sts < 2)
 		return false;
 
-	if (sta->deflink.eht_cap.has_eht) {
+	if (ok_eht(sta)) {
 		struct ieee80211_sta_eht_cap *pc = &sta->deflink.eht_cap;
 		struct ieee80211_eht_cap_elem_fixed *pe = &pc->eht_cap_elem;
 
@@ -1502,7 +1562,7 @@ mt7996_is_ebf_supported(struct mt7996_phy *phy, struct ieee80211_vif *vif,
 			       EHT_PHY(CAP0_SU_BEAMFORMER, pe->phy_cap_info[0]);
 	}
 
-	if (sta->deflink.he_cap.has_he) {
+	if (ok_he(sta)) {
 		struct ieee80211_he_cap_elem *pe = &sta->deflink.he_cap.he_cap_elem;
 
 		if (bfee)
@@ -1513,7 +1573,7 @@ mt7996_is_ebf_supported(struct mt7996_phy *phy, struct ieee80211_vif *vif,
 			       HE_PHY(CAP4_SU_BEAMFORMEE, pe->phy_cap_info[4]);
 	}
 
-	if (sta->deflink.vht_cap.vht_supported) {
+	if (ok_vht(sta)) {
 		u32 cap = sta->deflink.vht_cap.cap;
 
 		if (bfee)
@@ -1731,7 +1791,7 @@ mt7996_mcu_sta_bfer_tlv(struct mt7996_dev *dev, struct sk_buff *skb,
 	};
 	bool ebf;
 
-	if (!(sta->deflink.ht_cap.ht_supported || sta->deflink.he_cap.has_he))
+	if (!(ok_ht(sta) || ok_he(sta)))
 		return;
 
 	ebf = mt7996_is_ebf_supported(phy, vif, sta, false);
@@ -1745,13 +1805,13 @@ mt7996_mcu_sta_bfer_tlv(struct mt7996_dev *dev, struct sk_buff *skb,
 	 * vht: support eBF and iBF
 	 * ht: iBF only, since mac80211 lacks of eBF support
 	 */
-	if (sta->deflink.eht_cap.has_eht && ebf)
+	if (ok_eht(sta) && ebf)
 		mt7996_mcu_sta_bfer_eht(sta, vif, phy, bf);
-	else if (sta->deflink.he_cap.has_he && ebf)
+	else if (ok_he(sta) && ebf)
 		mt7996_mcu_sta_bfer_he(sta, vif, phy, bf);
-	else if (sta->deflink.vht_cap.vht_supported)
+	else if (ok_vht(sta))
 		mt7996_mcu_sta_bfer_vht(sta, phy, bf, ebf);
-	else if (sta->deflink.ht_cap.ht_supported)
+	else if (ok_ht(sta))
 		mt7996_mcu_sta_bfer_ht(sta, phy, bf);
 	else
 		return;
@@ -1796,7 +1856,7 @@ mt7996_mcu_sta_bfee_tlv(struct mt7996_dev *dev, struct sk_buff *skb,
 	struct tlv *tlv;
 	u8 nrow = 0;
 
-	if (!(sta->deflink.vht_cap.vht_supported || sta->deflink.he_cap.has_he))
+	if (!(ok_vht(sta) || ok_he(sta)))
 		return;
 
 	if (!mt7996_is_ebf_supported(phy, vif, sta, true))
@@ -1805,12 +1865,12 @@ mt7996_mcu_sta_bfee_tlv(struct mt7996_dev *dev, struct sk_buff *skb,
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_BFEE, sizeof(*bfee));
 	bfee = (struct sta_rec_bfee *)tlv;
 
-	if (sta->deflink.he_cap.has_he) {
+	if (ok_he(sta)) {
 		struct ieee80211_he_cap_elem *pe = &sta->deflink.he_cap.he_cap_elem;
 
 		nrow = HE_PHY(CAP5_BEAMFORMEE_NUM_SND_DIM_UNDER_80MHZ_MASK,
 			      pe->phy_cap_info[5]);
-	} else if (sta->deflink.vht_cap.vht_supported) {
+	} else {
 		struct ieee80211_sta_vht_cap *pc = &sta->deflink.vht_cap;
 
 		nrow = FIELD_GET(IEEE80211_VHT_CAP_SOUNDING_DIMENSIONS_MASK,
@@ -1989,11 +2049,12 @@ mt7996_mcu_add_rate_ctrl_fixed(struct mt7996_dev *dev, struct ieee80211_vif *vif
 		}								\
 	} while (0)
 
-	if (sta->deflink.he_cap.has_he) {
+	// TODO:  EHT support?
+	if (ok_he(sta)) {
 		__sta_phy_bitrate_mask_check(he_mcs, he_gi, 0, 1);
-	} else if (sta->deflink.vht_cap.vht_supported) {
+	} else if (ok_vht(sta)) {
 		__sta_phy_bitrate_mask_check(vht_mcs, gi, 0, 0);
-	} else if (sta->deflink.ht_cap.ht_supported) {
+	} else if (ok_ht(sta)) {
 		__sta_phy_bitrate_mask_check(ht_mcs, gi, 1, 0);
 	} else {
 		nrates = hweight32(mask->control[band].legacy);
@@ -2094,7 +2155,7 @@ mt7996_mcu_sta_rate_ctrl_tlv(struct sk_buff *skb, struct mt7996_dev *dev,
 		}
 	}
 
-	if (sta->deflink.ht_cap.ht_supported) {
+	if (ok_ht(sta)) {
 		ra->supp_mode |= MODE_HT;
 		ra->af = sta->deflink.ht_cap.ampdu_factor;
 		ra->ht_gf = !!(sta->deflink.ht_cap.cap & IEEE80211_HT_CAP_GRN_FLD);
@@ -2117,7 +2178,7 @@ mt7996_mcu_sta_rate_ctrl_tlv(struct sk_buff *skb, struct mt7996_dev *dev,
 		ra->supp_ht_mcs = *(__le32 *)ra->ht_mcs;
 	}
 
-	if (sta->deflink.vht_cap.vht_supported) {
+	if (ok_vht(sta)) {
 		u8 af;
 
 		ra->supp_mode |= MODE_VHT;
@@ -2142,7 +2203,7 @@ mt7996_mcu_sta_rate_ctrl_tlv(struct sk_buff *skb, struct mt7996_dev *dev,
 					   mask->control[band].vht_mcs);
 	}
 
-	if (sta->deflink.he_cap.has_he) {
+	if (ok_he(sta)) {
 		ra->supp_mode |= MODE_HE;
 		cap |= STA_CAP_HE;
 
@@ -2254,7 +2315,7 @@ int mt7996_mcu_add_sta(struct mt7996_dev *dev, struct ieee80211_vif *vif,
 		/* starec bfer */
 		mt7996_mcu_sta_bfer_tlv(dev, skb, vif, sta);
 		/* starec ht */
-		mt7996_mcu_sta_ht_tlv(skb, sta);
+		mt7996_mcu_sta_ht_tlv(dev, skb, sta);
 		/* starec vht */
 		mt7996_mcu_sta_vht_tlv(skb, sta);
 		/* starec uapsd */
@@ -2264,9 +2325,9 @@ int mt7996_mcu_add_sta(struct mt7996_dev *dev, struct ieee80211_vif *vif,
 		/* starec he */
 		mt7996_mcu_sta_he_tlv(skb, sta);
 		/* starec he 6g*/
-		mt7996_mcu_sta_he_6g_tlv(skb, sta);
+		mt7996_mcu_sta_he_6g_tlv(skb, sta, dev);
 		/* starec eht */
-		mt7996_mcu_sta_eht_tlv(skb, sta);
+		mt7996_mcu_sta_eht_tlv(skb, sta, dev);
 		/* starec muru */
 		mt7996_mcu_sta_muru_tlv(dev, skb, vif, sta);
 		/* starec bfee */
