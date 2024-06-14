@@ -185,8 +185,6 @@ static bool ok_ht(struct ieee80211_sta *sta)
 	struct mt7996_sta *msta = (struct mt7996_sta *)sta->drv_priv;
 	struct ieee80211_vif *vif = container_of((void *)msta->vif,
 						 struct ieee80211_vif, drv_priv);
-	pr_info("mt7996: ok-ht, vif->type: %d  IFTYPE_STA: %d\n",
-		vif->type, NL80211_IFTYPE_STATION);
 	return sta->deflink.ht_cap.ht_supported &&
 		(sta->deflink.conn_settings.mode >= IEEE80211_CONN_MODE_HT ||
 		 vif->type != NL80211_IFTYPE_STATION);
