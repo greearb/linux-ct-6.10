@@ -980,6 +980,9 @@ static int mt7996_init_hardware(struct mt7996_dev *dev)
 	if (ret)
 		return ret;
 
+	dev_info(dev->mt76.dev, "mt7996:  chip: 0x%x sku: %d fem-type: %d\n",
+		 mt76_chip(&dev->mt76), dev->chip_sku, dev->fem_type);
+
 	ret = mt7996_dma_init(dev);
 	if (ret)
 		return ret;
