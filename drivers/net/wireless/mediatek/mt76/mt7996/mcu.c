@@ -14,9 +14,19 @@
 	char *_fw;						\
 	switch (mt76_chip(&(_dev)->mt76)) {			\
 	case 0x7992:						\
-		_fw = MT7992_##name;				\
+		if ((_dev)->chip_sku == MT7992_SKU_23)		\
+			_fw = MT7992_##name##_23;		\
+		else if ((_dev)->chip_sku == MT7992_SKU_24)	\
+			_fw = MT7992_##name##_24;		\
+		else						\
+			_fw = MT7992_##name;			\
 		break;						\
 	case 0x7990:						\
+		if ((_dev)->chip_sku == MT7996_SKU_233)		\
+			_fw = MT7996_##name##_233;		\
+		else						\
+			_fw = MT7996_##name;			\
+		break;						\
 	default:						\
 		_fw = MT7996_##name;				\
 		break;						\
@@ -3010,24 +3020,29 @@ static int __mt7996_load_ram(struct mt7996_dev *dev, const char *fw_type,
 	int ret;
 
 	ret = request_firmware(&fw, fw_file, dev->mt76.dev);
-	if (ret)
+	if (ret) {
+		dev_err(dev->mt76.dev, "request firmware failed, type: %s file: %s\n",
+			fw_type, fw_file);
 		return ret;
+	}
 
 	if (!fw || !fw->data || fw->size < sizeof(*hdr)) {
-		dev_err(dev->mt76.dev, "Invalid firmware\n");
+		dev_err(dev->mt76.dev, "Invalid firmware, type: %s file: %s\n",
+			fw_type, fw_file);
 		ret = -EINVAL;
 		goto out;
 	}
 
 	hdr = (const void *)(fw->data + fw->size - sizeof(*hdr));
-	dev_info(dev->mt76.dev, "%s Firmware Version: %.10s, Build Time: %.15s\n",
-		 fw_type, hdr->fw_ver, hdr->build_date);
+	dev_info(dev->mt76.dev, "%s:%s Firmware Version: %.10s, Build Time: %.15s\n",
+		 fw_type, fw_file, hdr->fw_ver, hdr->build_date);
 	strncpy(dev->mt76.fw.wm_fw_ver, hdr->fw_ver, 10);
 	strncpy(dev->mt76.fw.wm_build_date, hdr->build_date, 15);
 
 	ret = mt7996_mcu_send_ram_firmware(dev, hdr, fw->data, ram_type);
 	if (ret) {
-		dev_err(dev->mt76.dev, "Failed to start %s firmware\n", fw_type);
+		dev_err(dev->mt76.dev, "Failed to start %s firmware, ret: %d\n",
+			fw_type, ret);
 		goto out;
 	}
 
