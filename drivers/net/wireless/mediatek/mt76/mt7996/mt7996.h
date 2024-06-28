@@ -289,6 +289,10 @@ struct mt7996_phy {
 	struct mt76_channel_state state_ts;
 
 	bool has_aux_rx;
+	bool sr_enable;
+	bool enhanced_sr_enable;
+	u8 pp_mode;
+	u16 punct_bitmap;
 
 #ifdef CONFIG_NL80211_TESTMODE
 	struct {
@@ -304,9 +308,6 @@ struct mt7996_phy {
 		u8 spe_idx;
 	} test;
 #endif
-
-	bool sr_enable:1;
-	bool enhanced_sr_enable:1;
 };
 
 struct mt7996_dev {
@@ -698,8 +699,7 @@ int mt7996_mcu_wtbl_update_hdr_trans(struct mt7996_dev *dev,
 				     struct ieee80211_vif *vif,
 				     struct ieee80211_sta *sta);
 int mt7996_mcu_cp_support(struct mt7996_dev *dev, u8 mode);
-int mt7996_mcu_set_pp_en(struct mt7996_phy *phy, bool auto_mode, u8 force_bitmap,
-			 u16 bitmap);
+int mt7996_mcu_set_pp_en(struct mt7996_phy *phy, u8 mode, u16 bitmap);
 #ifdef CONFIG_MAC80211_DEBUGFS
 void mt7996_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    struct ieee80211_sta *sta, struct dentry *dir);
