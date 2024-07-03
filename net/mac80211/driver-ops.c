@@ -134,6 +134,9 @@ void drv_remove_interface(struct ieee80211_local *local,
 	trace_drv_remove_interface(local, sdata);
 	local->ops->remove_interface(&local->hw, &sdata->vif);
 	trace_drv_return_void(local);
+
+	/* Clear private driver data in case of reuse */
+	memset(sdata->vif.drv_priv, 0, local->hw.vif_data_size);
 }
 
 __must_check
