@@ -20,6 +20,10 @@
 #include "nl80211.h"
 #include "rdev-ops.h"
 
+static int ignore_eml_sync_delay = 0;
+module_param(ignore_eml_sync_delay, int, 0644);
+MODULE_PARM_DESC(ignore_eml_sync_delay,
+                 "Ignore EML sync delay mismatch when checking MLO compatibility.  Works around APs with bad beacons.");
 
 void cfg80211_rx_assoc_resp(struct net_device *dev,
 			    const struct cfg80211_rx_assoc_resp_data *data)
@@ -345,9 +349,14 @@ cfg80211_mlme_check_mlo_compat(const struct ieee80211_multi_link_elem *mle_a,
 	tmpa = ieee80211_mle_get_eml_med_sync_delay((const u8 *)mle_a);
 	tmpb = ieee80211_mle_get_eml_med_sync_delay((const u8 *)mle_b);
 	if (tmpa != tmpb) {
-		NL_SET_ERR_MSG_FMT(extack, "link EML medium sync delay mismatch: %d != %d",
-				   tmpa, tmpb);
-		return -EINVAL;
+		if (ignore_eml_sync_delay) {
+			pr_err("Likely AP Beacon IE Bug: MLD: %pM link EML medium sync delay mismatch: %d != %d.  Configured to ignore mismatch.\n",
+			       common_a->mld_mac_addr, tmpa, tmpb);
+		} else {
+			NL_SET_ERR_MSG_FMT(extack, "link EML medium sync delay mismatch: %d != %d",
+					   tmpa, tmpb);
+			return -EINVAL;
+		}
 	}
 
 	tmpa = ieee80211_mle_get_eml_cap((const u8 *)mle_a);
