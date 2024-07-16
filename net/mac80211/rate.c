@@ -39,6 +39,29 @@ void rate_control_rate_init(struct sta_info *sta)
 
 	ieee80211_sta_init_nss(&sta->deflink);
 
+	// Hack to ensure secondary links have rx_nss configured.
+	// Fixes secondary link_sta having 0 rx_nss when iwlwifi is trying to change
+	// links and set its rate-ctrl logic. --Ben
+	//pr_info("rate: sta-init-nss called from rate-control-rate-init, nss: %d\n",
+	//	sta->deflink.pub->rx_nss);
+	{
+		int z;
+
+		for (z = 0; z<IEEE80211_MLD_MAX_NUM_LINKS; z++) {
+			struct link_sta_info *ls =
+				rcu_dereference_protected(sta->link[z],
+							  lockdep_is_held(&local->hw.wiphy->mtx));
+			if (!ls)
+				continue;
+			if (ls == &sta->deflink)
+				continue;
+
+			//pr_info("rate: rate-control-rate-init, setting other link rx_nss from: %d to %d  link-id: %d\n",
+			//	ls->pub->rx_nss, sta->deflink.pub->rx_nss, z);
+			ls->pub->rx_nss = sta->deflink.pub->rx_nss;
+		}
+	}
+
 	if (!ref)
 		return;
 
