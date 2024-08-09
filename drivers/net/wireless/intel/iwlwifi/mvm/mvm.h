@@ -3151,9 +3151,4 @@ static inline int iwl_mvm_sum_sigs_2(int a, int b)
 
 void iwl_mvm_mld_select_links(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 			      bool valid_links_changed);
-void
-iwl_mvm_send_ap_tx_power_constraint_cmd(struct iwl_mvm *mvm,
-					struct ieee80211_vif *vif,
-					struct ieee80211_bss_conf *bss_conf,
-					bool is_ap);
 #endif /* __IWL_MVM_H__ */
