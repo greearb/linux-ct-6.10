@@ -16,6 +16,7 @@
 	HOW(EXIT_LOW_RSSI)		\
 	HOW(EXIT_COEX)			\
 	HOW(EXIT_BANDWIDTH)		\
+	HOW(EXIT_BAND)			\
 	HOW(EXIT_CSA)			\
 	HOW(EXIT_LINK_USAGE)
 
@@ -750,10 +751,16 @@ bool iwl_mvm_mld_valid_link_pair(struct ieee80211_vif *vif,
 	    iwl_mvm_esr_disallowed_with_link(mvm, vif, b, false))
 		return false;
 
-	if (a->chandef->width != b->chandef->width ||
-	    !(a->chandef->chan->band == NL80211_BAND_6GHZ &&
-	      b->chandef->chan->band == NL80211_BAND_5GHZ))
+	if (a->chandef->width != b->chandef->width)
 		ret |= IWL_MVM_ESR_EXIT_BANDWIDTH;
+
+	/* Only supports 5g and 6g bands at the moment */
+	if (((a->chandef->chan->band != NL80211_BAND_6GHZ) &&
+	     (a->chandef->chan->band != NL80211_BAND_5GHZ)) ||
+	    ((b->chandef->chan->band != NL80211_BAND_6GHZ) &&
+	     (b->chandef->chan->band != NL80211_BAND_5GHZ)) ||
+	    (a->chandef->chan->band == b->chandef->chan->band))
+		ret |= IWL_MVM_ESR_EXIT_BAND;
 
 	if (ret) {
 		IWL_DEBUG_INFO(mvm,
