@@ -44,11 +44,14 @@ EXPORT_SYMBOL(ieee80211_tx_status_irqsafe);
 static struct link_sta_info*
 ieee80211_get_tx_link_sta(struct sta_info *sta, struct ieee80211_tx_info *info)
 {
-	u8 link_id = u32_get_bits(info->control.flags, IEEE80211_TX_CTRL_MLO_LINK);
+	u8 link_id = IEEE80211_LINK_UNSPECIFIED;
 	struct link_sta_info *l_sta_info;
 
 	if (!sta)
 		return NULL;
+
+	if (info)
+		link_id = u32_get_bits(info->control.flags, IEEE80211_TX_CTRL_MLO_LINK);
 
 	if (link_id != IEEE80211_LINK_UNSPECIFIED) {
 		l_sta_info = rcu_access_pointer(sta->link[link_id]);
