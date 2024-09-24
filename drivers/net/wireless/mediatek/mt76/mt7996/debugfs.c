@@ -1146,7 +1146,7 @@ mt7996_get_txpower_info(struct file *file, char __user *user_buf,
 			 "    Thermal Compensation:  %s\n",
 			 basic_info->thermal_compensate_enable ? "enable" : "disable");
 	len += scnprintf(buf + len, size - len,
-			 "    Theraml Compensation Value: %d\n",
+			 "    Thermal Compensation Value: %d\n",
 			 basic_info->thermal_compensate_value);
 
 	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
@@ -1174,30 +1174,16 @@ static const struct file_operations mt7996_txpower_info_fops = {
 })
 
 static ssize_t
-mt7996_get_txpower_sku(struct file *file, char __user *user_buf,
-		       size_t count, loff_t *ppos)
+__mt7996_get_txpower_sku(struct file *file, char __user *user_buf,
+			 size_t count, loff_t *ppos, struct mt7996_mcu_txpower_event *event,
+			 char* buf, size_t size)
 {
 	struct mt7996_phy *phy = file->private_data;
 	struct mt7996_dev *dev = phy->dev;
-	struct mt7996_mcu_txpower_event *event;
 	u8 band_idx = phy->mt76->band_idx;
-	static const size_t size = 5120;
 	int i, offs = 0, len = 0;
 	ssize_t ret;
-	char *buf;
 	u32 reg;
-
-	buf = kzalloc(size, GFP_KERNEL);
-	event = kzalloc(sizeof(*event), GFP_KERNEL);
-	if (!buf || !event) {
-		ret = -ENOMEM;
-		goto out;
-	}
-
-	ret = mt7996_mcu_get_tx_power_info(phy, PHY_RATE_INFO, event);
-	if (ret ||
-	    le32_to_cpu(event->phy_rate_info.category) != UNI_TXPOWER_PHY_RATE_INFO)
-		goto out;
 
 	len += scnprintf(buf + len, size - len,
 			 "\nPhy %d TX Power Table (Channel %d)\n",
@@ -1283,14 +1269,79 @@ mt7996_get_txpower_sku(struct file *file, char __user *user_buf,
 
 	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
 
+	return ret;
+}
+
+static ssize_t
+mt7996_get_txpower_sku(struct file *file, char __user *user_buf,
+		       size_t count, loff_t *ppos)
+{
+	struct mt7996_phy *phy = file->private_data;
+	struct mt7996_mcu_txpower_event *event;
+	static const size_t size = 5120;
+	char *buf;
+	int ret;
+
+	buf = kzalloc(size, GFP_KERNEL);
+	event = kzalloc(sizeof(*event), GFP_KERNEL);
+	if (!buf || !event) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	ret = mt7996_mcu_get_tx_power_info(phy, PHY_RATE_INFO, event);
+	if (ret ||
+	    le32_to_cpu(event->phy_rate_info.category) != UNI_TXPOWER_PHY_RATE_INFO)
+		goto out;
+
+	ret = __mt7996_get_txpower_sku(file, user_buf, count, ppos, event, buf, size);
+
 out:
 	kfree(buf);
 	kfree(event);
+
 	return ret;
 }
 
 static const struct file_operations mt7996_txpower_sku_fops = {
 	.read = mt7996_get_txpower_sku,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static ssize_t
+mt7996_get_txpower_default(struct file *file, char __user *user_buf,
+			   size_t count, loff_t *ppos)
+{
+	struct mt7996_phy *phy = file->private_data;
+	static const size_t size = 5120;
+	char *buf;
+	int ret;
+	int len = 0;
+
+	buf = kzalloc(size, GFP_KERNEL);
+	if (!buf) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	if (phy->default_txpower) {
+		ret = __mt7996_get_txpower_sku(file, user_buf, count, ppos, phy->default_txpower, buf, size);
+	}
+	else {
+		len += scnprintf(buf + len, size - len, "ERROR:  default_txpower is NULL\n");
+		ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	}
+
+out:
+	kfree(buf);
+
+	return ret;
+}
+
+static const struct file_operations mt7996_txpower_default_fops = {
+	.read = mt7996_get_txpower_default,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1501,12 +1552,14 @@ int mt7996_init_debugfs(struct mt7996_phy *phy)
 	debugfs_create_file("txpower_level", 0600, dir, phy, &fops_txpower_level);
 	debugfs_create_file("txpower_info", 0600, dir, phy, &mt7996_txpower_info_fops);
 	debugfs_create_file("txpower_sku", 0600, dir, phy, &mt7996_txpower_sku_fops);
+	debugfs_create_file("txpower_default", 0600, dir, phy, &mt7996_txpower_default_fops);
 	debugfs_create_file("txpower_path", 0600, dir, phy, &mt7996_txpower_path_fops);
 
 	debugfs_create_file("sr_enable", 0600, dir, phy, &fops_sr_enable);
 	debugfs_create_file("sr_enhanced_enable", 0600, dir, phy, &fops_sr_enhanced_enable);
 	debugfs_create_file("sr_stats", 0400, dir, phy, &mt7996_sr_stats_fops);
 	debugfs_create_file("sr_scene_cond", 0400, dir, phy, &mt7996_sr_scene_cond_fops);
+	debugfs_create_bool("mgmt_pwr_enhance", 0600, dir, &dev->mt76.mgmt_pwr_enhance);
 
 	if (phy->mt76->cap.has_5ghz) {
 		debugfs_create_u32("dfs_hw_pattern", 0400, dir,
