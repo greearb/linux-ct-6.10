@@ -4751,7 +4751,10 @@ int mt7996_mcu_set_txpower_sku(struct mt7996_phy *phy)
 	if (hw->conf.power_level == INT_MIN || hw->conf.power_level > 127)
 		hw->conf.power_level = 127;
 
-	txpower_limit = hw->conf.power_level + phy->tx_front_end_loss;
+	if (phy->adjust_txp_by_loss)
+		txpower_limit = hw->conf.power_level + phy->tx_front_end_loss;
+	else
+		txpower_limit = hw->conf.power_level;
 	txpower_limit = mt7996_get_power_bound(phy, txpower_limit);
 
 	if (phy->sku_limit_en) {
