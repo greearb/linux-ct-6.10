@@ -273,6 +273,8 @@ struct mt7996_phy {
 	u8 throttle_state;
 	u32 throttle_temp[2]; /* 0: critical high, 1: maximum */
 
+	u32 mac80211_rxfilter_flags;
+	u8 monitor_enabled;
 	u32 rxfilter;
 	u64 omac_mask;
 

@@ -20,6 +20,11 @@ MODULE_PARM_DESC(debug_lvl,
 		 "0xffffffff	any/all\n"
 	);
 
+static void __mt7996_configure_filter(struct ieee80211_hw *hw,
+				      unsigned int changed_flags,
+				      unsigned int *total_flags,
+				      u64 multicast);
+
 static bool mt7996_dev_running(struct mt7996_dev *dev)
 {
 	struct mt7996_phy *phy;
@@ -506,15 +511,15 @@ static int mt7996_config(struct ieee80211_hw *hw, u32 changed)
 
 	if (changed & IEEE80211_CONF_CHANGE_MONITOR) {
 		bool enabled = !!(hw->conf.flags & IEEE80211_CONF_MONITOR);
+		u32 total_flags = phy->mac80211_rxfilter_flags;
+		u64 multicast = 0; /* not used by this driver currently. */
 
-		if (!enabled)
-			phy->rxfilter |= MT_WF_RFCR_DROP_OTHER_UC;
-		else
-			phy->rxfilter &= ~MT_WF_RFCR_DROP_OTHER_UC;
+		phy->monitor_enabled = enabled;
 
 		mt76_rmw_field(dev, MT_DMA_DCR0(phy->mt76->band_idx),
 			       MT_DMA_DCR0_RXD_G5_EN, enabled || dev->rx_group_5_enable);
-		mt76_wr(dev, MT_WF_RFCR(phy->mt76->band_idx), phy->rxfilter);
+
+		__mt7996_configure_filter(hw, 0, &total_flags, multicast);
 	}
 
 	mutex_unlock(&dev->mt76.mutex);
@@ -542,10 +547,10 @@ mt7996_conf_tx(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	return 0;
 }
 
-static void mt7996_configure_filter(struct ieee80211_hw *hw,
-				    unsigned int changed_flags,
-				    unsigned int *total_flags,
-				    u64 multicast)
+static void __mt7996_configure_filter(struct ieee80211_hw *hw,
+				      unsigned int changed_flags,
+				      unsigned int *total_flags,
+				      u64 multicast)
 {
 	struct mt7996_dev *dev = mt7996_hw_dev(hw);
 	struct mt7996_phy *phy = mt7996_hw_phy(hw);
@@ -553,8 +558,14 @@ static void mt7996_configure_filter(struct ieee80211_hw *hw,
 			MT_WF_RFCR1_DROP_BF_POLL |
 			MT_WF_RFCR1_DROP_BA |
 			MT_WF_RFCR1_DROP_CFEND |
+			MT_WF_RFCR1_DROP_NO2ME_TF |
+			MT_WF_RFCR1_DROP_NON_MUBAR_TF |
+			MT_WF_RFCR1_DROP_RXS_BRP |
+			MT_WF_RFCR1_DROP_TF_BFRP |
 			MT_WF_RFCR1_DROP_CFACK;
 	u32 flags = 0;
+	bool is_promisc = *total_flags & FIF_CONTROL || phy->monitor_vif ||
+		phy->monitor_enabled;
 
 #define MT76_FILTER(_flag, _hw) do {					\
 		flags |= *total_flags & FIF_##_flag;			\
@@ -562,7 +573,7 @@ static void mt7996_configure_filter(struct ieee80211_hw *hw,
 		phy->rxfilter |= !(flags & FIF_##_flag) * (_hw);	\
 	} while (0)
 
-	mutex_lock(&dev->mt76.mutex);
+	phy->mac80211_rxfilter_flags = *total_flags; /* save requested flags for later */
 
 	phy->rxfilter &= ~(MT_WF_RFCR_DROP_OTHER_BSS |
 			   MT_WF_RFCR_DROP_OTHER_BEACON |
@@ -573,7 +584,15 @@ static void mt7996_configure_filter(struct ieee80211_hw *hw,
 			   MT_WF_RFCR_DROP_BCAST |
 			   MT_WF_RFCR_DROP_DUPLICATE |
 			   MT_WF_RFCR_DROP_A2_BSSID |
-			   MT_WF_RFCR_DROP_UNWANTED_CTL |
+			   MT_WF_RFCR_RX_UNWANTED_CTL |
+			   MT_WF_RFCR_SECOND_BCN_EN |
+			   MT_WF_RFCR_RX_MGMT_FRAME_CTRL |
+			   MT_WF_RFCR_RX_SAMEBSSIDPRORESP_CTRL |
+			   MT_WF_RFCR_RX_DIFFBSSIDPRORESP_CTRL |
+			   MT_WF_RFCR_RX_SAMEBSSIDBCN_CTRL |
+			   MT_WF_RFCR_RX_SAMEBSSIDNULL_CTRL |
+			   MT_WF_RFCR_RX_DIFFBSSIDNULL_CTRL |
+			   //MT_WF_RFCR_IND_FILTER_EN_OF_31_23_BIT |
 			   MT_WF_RFCR_DROP_STBC_MULTI);
 
 	MT76_FILTER(OTHER_BSS, MT_WF_RFCR_DROP_OTHER_TIM |
@@ -587,13 +606,49 @@ static void mt7996_configure_filter(struct ieee80211_hw *hw,
 			     MT_WF_RFCR_DROP_CTL_RSV |
 			     MT_WF_RFCR_DROP_NDPA);
 
+	phy->rxfilter |= (MT_WF_RFCR_DROP_OTHER_UC |
+			  MT_WF_RFCR_DROP_DIFFBSSIDMGT_CTRL);
+
+	if (is_promisc) {
+		phy->rxfilter &= ~MT_WF_RFCR_DROP_OTHER_UC;
+		//phy->rxfilter |= MT_WF_RFCR_IND_FILTER_EN_OF_31_23_BIT;
+		phy->rxfilter |= MT_WF_RFCR_RX_DATA_FRAME_CTRL;
+		if (flags & FIF_CONTROL) {
+			phy->rxfilter |= MT_WF_RFCR_RX_UNWANTED_CTL;
+			phy->rxfilter |= MT_WF_RFCR_SECOND_BCN_EN;
+			phy->rxfilter |= MT_WF_RFCR_RX_MGMT_FRAME_CTRL;
+			phy->rxfilter |= MT_WF_RFCR_RX_SAMEBSSIDPRORESP_CTRL;
+			phy->rxfilter |= MT_WF_RFCR_RX_DIFFBSSIDPRORESP_CTRL;
+			phy->rxfilter |= MT_WF_RFCR_RX_SAMEBSSIDBCN_CTRL;
+			phy->rxfilter |= MT_WF_RFCR_RX_SAMEBSSIDNULL_CTRL;
+			phy->rxfilter |= MT_WF_RFCR_RX_DIFFBSSIDNULL_CTRL;
+			phy->rxfilter &= ~(MT_WF_RFCR_DROP_DIFFBSSIDMGT_CTRL);
+		}
+	}
+
 	*total_flags = flags;
+
+	//dev_err(dev->mt76.dev, "apply-rxfilter, promisc: %d  rxfilter: 0x%x FIF_CONTROL: 0x%x monitor-vif: %p mon-enabled: %d\n",
+	//	is_promisc, phy->rxfilter, flags & FIF_CONTROL, phy->monitor_vif,
+	//	phy->monitor_enabled);
 	mt76_wr(dev, MT_WF_RFCR(phy->mt76->band_idx), phy->rxfilter);
 
-	if (*total_flags & FIF_CONTROL)
+	if (is_promisc)
 		mt76_clear(dev, MT_WF_RFCR1(phy->mt76->band_idx), ctl_flags);
 	else
 		mt76_set(dev, MT_WF_RFCR1(phy->mt76->band_idx), ctl_flags);
+}
+
+static void mt7996_configure_filter(struct ieee80211_hw *hw,
+				    unsigned int changed_flags,
+				    unsigned int *total_flags,
+				    u64 multicast)
+{
+	struct mt7996_dev *dev = mt7996_hw_dev(hw);
+
+	mutex_lock(&dev->mt76.mutex);
+
+	__mt7996_configure_filter(hw, changed_flags, total_flags, multicast);
 
 	mutex_unlock(&dev->mt76.mutex);
 }
