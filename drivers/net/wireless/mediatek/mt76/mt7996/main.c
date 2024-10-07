@@ -520,6 +520,7 @@ static int mt7996_config(struct ieee80211_hw *hw, u32 changed)
 			       MT_DMA_DCR0_RXD_G5_EN, enabled || dev->rx_group_5_enable);
 
 		__mt7996_configure_filter(hw, 0, &total_flags, multicast);
+		mt7996_mcu_set_sniffer_mode(phy, enabled);
 	}
 
 	mutex_unlock(&dev->mt76.mutex);
