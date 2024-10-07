@@ -603,8 +603,7 @@ static void __mt7996_configure_filter(struct ieee80211_hw *hw,
 
 	MT76_FILTER(CONTROL, MT_WF_RFCR_DROP_CTS |
 			     MT_WF_RFCR_DROP_RTS |
-			     MT_WF_RFCR_DROP_CTL_RSV |
-			     MT_WF_RFCR_DROP_NDPA);
+			     MT_WF_RFCR_DROP_CTL_RSV);
 
 	phy->rxfilter |= (MT_WF_RFCR_DROP_OTHER_UC |
 			  MT_WF_RFCR_DROP_DIFFBSSIDMGT_CTRL);
