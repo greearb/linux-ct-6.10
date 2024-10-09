@@ -969,12 +969,13 @@ enum {
 					 MT7996_BEACON_UPDATE_SIZE)
 
 static inline s8
-mt7996_get_power_bound(struct mt7996_phy *phy, s8 txpower)
+mt7996_get_power_bound(struct mt7996_phy *phy, s8 txpower, s8 *single_nss_txpower_half_db_ret)
 {
 	struct mt76_phy *mphy = phy->mt76;
 	int n_chains = hweight16(mphy->chainmask);
 
 	txpower = mt76_get_sar_power(mphy, mphy->chandef.chan, txpower * 2);
+	*single_nss_txpower_half_db_ret = txpower;
 	txpower -= mt76_tx_power_nss_delta(n_chains);
 
 	return txpower;
