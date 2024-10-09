@@ -781,6 +781,7 @@ static void print_lock(struct held_lock *hlock)
 static void lockdep_print_held_locks(struct task_struct *p)
 {
 	int i, depth = READ_ONCE(p->lockdep_depth);
+	const char* rnc = "";
 
 	if (!depth)
 		printk("no locks held by %s/%d.\n", p->comm, task_pid_nr(p));
@@ -792,9 +793,10 @@ static void lockdep_print_held_locks(struct task_struct *p)
 	 * and it's not the current task.
 	 */
 	if (p != current && task_is_running(p))
-		return;
+		rnc = " Not reliable: Running-Not-Current: ";
+
 	for (i = 0; i < depth; i++) {
-		printk(" #%d: ", i);
+		printk(" %s#%d: ", rnc, i);
 		print_lock(p->held_locks + i);
 	}
 }
