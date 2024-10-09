@@ -2000,7 +2000,9 @@ static void iwl_mvm_rx_tx_cmd_single(struct iwl_mvm *mvm,
 		memset(&info->status, 0, sizeof(info->status));
 		info->flags &= ~(IEEE80211_TX_STAT_ACK | IEEE80211_TX_STAT_TX_FILTERED);
 		if (link_sta_id != -1)
-			info->control.flags = u32_replace_bits(info->control.flags, link_sta_id, IEEE80211_TX_CTRL_MLO_LINK);
+			info->control.flags = u32_replace_bits(info->control.flags,
+							       link_sta_id,
+							       IEEE80211_TX_CTRL_MLO_LINK);
 
 		/* inform mac80211 about what happened with the frame */
 		switch (status & TX_STATUS_MSK) {
@@ -2454,7 +2456,9 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 			info->flags &= ~IEEE80211_TX_STAT_ACK;
 
 		if (link_sta)
-			info->control.flags |= u32_replace_bits(info->control.flags, link_sta->link_id, IEEE80211_TX_CTRL_MLO_LINK);
+			info->control.flags = u32_replace_bits(info->control.flags,
+							       link_sta->link_id,
+							       IEEE80211_TX_CTRL_MLO_LINK);
 	}
 
 	/*
