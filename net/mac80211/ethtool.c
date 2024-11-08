@@ -265,6 +265,8 @@ static int ieee80211_get_sset_count(struct net_device *dev, int sset)
 			_channel = (link)->conf->chanreq.oper.chan;	\
 		else if (_chanctx_conf)					\
 			_channel = _chanctx_conf->def.chan;		\
+		else if ((sdata)->vif.type == NL80211_IFTYPE_MONITOR)	\
+			_channel = (local)->monitor_chanreq.oper.chan;	\
 		else							\
 			_channel = NULL;				\
 		rcu_read_unlock();					\
